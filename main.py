@@ -7,7 +7,7 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 from telegram.error import BadRequest
 
 # ==================== تنظیمات ====================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8519774430:AAFLAY9E7zyFht8bs5wD4rSJ6p8WgCP-bgs")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8519774430:AAGHPewxXjkmj3fMmjjtMMlb3GD2oXGFR-0")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "Senderpfilesbot")
 FORCE_SUB_CHANNEL = os.getenv("FORCE_SUB_CHANNEL", "@betdesignernet")
 PRIVATE_CHANNEL_ID = int(os.getenv("PRIVATE_CHANNEL_ID", "-1002920455639"))
@@ -538,3 +538,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
