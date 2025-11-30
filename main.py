@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
 
@@ -52,6 +52,10 @@ FAQ_DATABASE = {
     'پیگیری سفارش': {
         'answer': '📦 **پیگیری سفارش:**\n\nروش‌های پیگیری:\n1. 🔐 ورود به حساب کاربری → بخش "سفارش‌ها"\n2. 🔢 وارد کردن شماره پیگیری در سایت\n3. 📞 تماس با پشتیبانی\n4. 🤖 پیام به این ربات با شماره سفارش\n\nشماره پیگیری پس از ثبت سفارش برای شما ارسال می‌شود.',
         'keywords': ['پیگیری', 'پیگیری سفارش', 'وضعیت سفارش', 'کد رهگیری', 'سفارشم کجاست']
+    },
+    'تاخیر در ارسال': {
+        'answer': '⏳ **تأخیر در ارسال سفارش:**\n\n**دلایل احتمالی تأخیر:**\n• 📦 افزایش حجم سفارشات در روزهای خاص\n• 🚚 مشکلات لجستیکی و حمل و نقل\n• 🏪 عدم موجودی موقت محصول\n• 📋 بررسی امنیتی سفارش\n\n**راه‌حل‌ها:**\n1. با پشتیبانی تماس بگیرید: 021-12345678\n2. شماره سفارش خود را ارائه دهید\n3. وضعیت دقیق سفارش شما بررسی می‌شود\n4. در صورت تأخیر طولانی، غرامت دریافت می‌کنید\n\n⏰ حداکثر زمان تحویل: 7 روز کاری',
+        'keywords': ['تاخیر', 'دیر شده', 'ارسال نشده', 'لم رسیده', 'چرا نرسیده', 'تأخیر', 'گذشته']
     },
     'سفارش برای دیگران': {
         'answer': '🎁 **سفارش برای دیگران:**\n\n• بله، می‌توانید برای شخص دیگری سفارش دهید\n• در صفحه پرداخت، آدرس و اطلاعات گیرنده را وارد کنید\n• می‌توانید به عنوان هدیه ارسال کنید\n• امکان درج پیام برای گیرنده وجود دارد',
@@ -106,6 +110,20 @@ FAQ_DATABASE = {
         'keywords': ['آسیب', 'شکسته', 'خراب', 'مشکل دار', 'محصول اسیب دیده', 'شکستگی']
     },
 
+    # دسته: مرجوعی و بازگشت
+    'شرایط مرجوعی': {
+        'answer': '↩️ **شرایط مرجوعی کالا:**\n\n• ⏰ 7 روز مهلت برای مرجوعی\n• ✅ سلامت کامل محصول\n• 📦 داشتن فاکتور خرید\n• 🎁 بسته‌بندی اصلی و سالم\n• 🏷️ برچسب و لیبل دست نخورده\n\n💰 هزینه مرجوعی در صورت سالم بودن محصول بر عهده ماست',
+        'keywords': ['مرجوعی', 'برگشت', 'عودت', 'مرجوع کردن', 'شرایط مرجوعی']
+    },
+    'روش مرجوعی': {
+        'answer': '📋 **روش درخواست مرجوعی:**\n\n1. 🔐 وارد حساب کاربری شوید\n2. 📦 به بخش "سفارش‌ها" بروید\n3. ↩️ گزینه "درخواست مرجوعی" را انتخاب کنید\n4. 📝 دلیل مرجوعی را مشخص کنید\n5. ✅ درخواست را تأیید کنید\n\n📞 یا با پشتیبانی تماس بگیرید: 021-12345678',
+        'keywords': ['چطور مرجوع کنم', 'نحوه مرجوعی', 'درخواست مرجوعی', 'روش عودت']
+    },
+    'زمان بازگشت وجه': {
+        'answer': '💸 **زمان بازگشت وجه:**\n\n• پس از دریافت محصول در انبار: 24-48 ساعت\n• بازگشت به حساب بانکی: 3-5 روز کاری\n• بازگشت به کیف پول: فوری\n• 📞 برای پیگیری: 021-12345678',
+        'keywords': ['بازگشت وجه', 'کی پولم برمیگرده', 'زمان برگشت پول', 'عودت وجه']
+    },
+
     # دسته: عمومی
     'ساعات کاری': {
         'answer': '🕒 **ساعات کاری فروشگاه:**\n\n⏰ شنبه تا چهارشنبه: ۸ صبح تا ۱۰ شب\n⏰ پنجشنبه: ۸ صبح تا ۸ شب\n⏰ جمعه: ۱۰ صبح تا ۶ شب\n\n📞 پشتیبانی تلفنی: ۹ صبح تا ۶ عصر',
@@ -117,32 +135,56 @@ FAQ_DATABASE = {
     }
 }
 
+# دیتابیس پیشنهادات و تخفیف‌ها
+PROMOTIONS = {
+    'تخفیف ویژه': '🎉 **تخفیف‌های ویژه این هفته:**\n\n• 📱 محصولات الکترونیکی: 20% تخفیف\n• 🏠 لوازم خانگی: 15% تخفیف\n• 👕 پوشاک: 30% تخفیف\n• 🎁 خرید اول: 10% تخفیف\n\n⏰ فرصت محدود!',
+    'عضویت ویژه': '👑 **برنامه وفاداری و اعضا ویژه:**\n\n• 💰 کسب امتیاز در هر خرید\n• 🎁 هدیه تولد برای اعضا\n• 🔥 پیشنهادات اختصاصی\n• ⚡ دسترسی زودتر به محصولات جدید\n\nبرای عضویت رایگان: /membership',
+    'شارژ کیف پول': '👛 **شارژ کیف پول و جایزه:**\n\n• 💵 شارژ 100 هزار تومان → 105 هزار تومان\n• 💰 شارژ 500 هزار تومان → 525 هزار تومان\n• 🎁 شارژ 1 میلیون تومان → 1.1 میلیون تومان\n\nشارژ کیف پول همیشه سود دارد!'
+}
+
 async def start(update: Update, context: CallbackContext) -> None:
     """Handler برای دستور /start"""
     user = update.effective_user
+    
+    # ذخیره اطلاعات کاربر
+    context.user_data['first_name'] = user.first_name
+    context.user_data['last_seen'] = datetime.now().isoformat()
+    
     keyboard = [
         [InlineKeyboardButton("📦 محصولات", callback_data="cat_products"), 
          InlineKeyboardButton("🛒 سفارش", callback_data="cat_order")],
         [InlineKeyboardButton("💳 پرداخت", callback_data="cat_payment"), 
          InlineKeyboardButton("🚚 ارسال", callback_data="cat_shipping")],
-        [InlineKeyboardButton("📞 تماس با پشتیبانی", callback_data="support"),
-         InlineKeyboardButton("🏠 اطلاعات فروشگاه", callback_data="info")]
+        [InlineKeyboardButton("↩️ مرجوعی", callback_data="cat_return"),
+         InlineKeyboardButton("🎉 تخفیف‌ها", callback_data="promotions")],
+        [InlineKeyboardButton("📞 پشتیبانی", callback_data="support"),
+         InlineKeyboardButton("🏠 اطلاعات فروشگاه", callback_data="info")],
+        [InlineKeyboardButton("⭐ نظرسنجی", callback_data="survey"),
+         InlineKeyboardButton("🔔 اطلاع‌رسانی", callback_data="notifications")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     welcome_text = f"""
     🌟 سلام {user.first_name} عزیز! 
     
-    به ربات پشتیبانی فروشگاه خوش آمدید 🤖
+    به ربات پشتیبانی هوشمند فروشگاه خوش آمدید 🤖
     
-    من می‌تونم در زمینه‌های زیر کمکتون کنم:
-    • 📦 اطلاعات محصولات
-    • 🛒 راهنمای سفارش
-    • 💳 روش‌های پرداخت
-    • 🚚 خدمات ارسال
-    • 📞 پشتیبانی
+    **من می‌تونم در زمینه‌های زیر کمکتون کنم:**
+    • 📦 اطلاعات محصولات و موجودی
+    • 🛒 ثبت و پیگیری سفارش
+    • 💳 راهنمای پرداخت امن
+    • 🚚 خدمات ارسال و تحویل
+    • ↩️ شرایط مرجوعی
+    • 🎉 تخفیف‌های ویژه
+    • 📞 پشتیبانی 24 ساعته
     
-    لطفا سوال خودتون رو بپرسید یا از دسته‌بندی زیر استفاده کنید:
+    **دستورات سریع:**
+    /help - راهنمای کامل
+    /promo - تخفیف‌های ویژه
+    /track - پیگیری سفارش
+    /support - تماس با پشتیبانی
+    
+    لطفا سوال خودتون رو بپرسید یا از منو استفاده کنید:
     """
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup)
@@ -150,28 +192,86 @@ async def start(update: Update, context: CallbackContext) -> None:
 async def help_command(update: Update, context: CallbackContext) -> None:
     """Handler برای دستور /help"""
     help_text = """
-    📋 **راهنمای استفاده از ربات:**
-    
-    **روش‌های ارتباط:**
-    • برای شروع /start را بفرستید
+    📋 **راهنمای کامل استفاده از ربات:**
+
+    **🎯 روش‌های ارتباط:**
+    • /start - شروع ربات و منوی اصلی
     • سوال خود را مستقیما تایپ کنید
     • از دکمه‌های دسته‌بندی استفاده کنید
-    • برای تماس با اپراتور از "تماس با پشتیبانی" استفاده کنید
-    
-    **نمونه سوالات:**
-    - موجودی محصول فلان چطوره؟
-    - چطور می‌تونم خرید کنم؟
-    - هزینه ارسال به شهرستان چقدره؟
-    - گارانتی محصولات چطوره؟
+    • از دستورات سریع استفاده کنید
+
+    **⚡ دستورات سریع:**
+    /track - پیگیری سفارش
+    /promo - تخفیف‌های ویژه
+    /return - شرایط مرجوعی
+    /support - تماس فوری با پشتیبانی
+    /membership - برنامه وفاداری
+    /survey - نظرسنجی رضایت
+
+    **📞 پشتیبانی:**
+    • آیدی ادمین: @ghbyhbjvhjguboijbot
+    • تلفن: 021-12345678
+    • واتساپ: 09121234567
     """
-    
+
     keyboard = [
-        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")],
-        [InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu"),
+         InlineKeyboardButton("📞 پشتیبانی", callback_data="support")],
+        [InlineKeyboardButton("🎉 تخفیف‌ها", callback_data="promotions"),
+         InlineKeyboardButton("📦 پیگیری سفارش", callback_data="faq_پیگیری سفارش")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(help_text, reply_markup=reply_markup)
+
+async def promo_command(update: Update, context: CallbackContext) -> None:
+    """Handler برای دستور /promo"""
+    promo_text = PROMOTIONS['تخفیف ویژه']
+    
+    keyboard = [
+        [InlineKeyboardButton("👑 عضویت ویژه", callback_data="membership"),
+         InlineKeyboardButton("👛 شارژ کیف پول", callback_data="wallet")],
+        [InlineKeyboardButton("🎁 همه پیشنهادها", callback_data="promotions"),
+         InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(promo_text, reply_markup=reply_markup)
+
+async def track_command(update: Update, context: CallbackContext) -> None:
+    """Handler برای دستور /track"""
+    track_text = """
+    📦 **پیگیری سفارش:**
+    
+    لطفا شماره سفارش خود را وارد کنید یا از روش‌های زیر استفاده کنید:
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔐 حساب کاربری", callback_data="faq_پیگیری سفارش"),
+         InlineKeyboardButton("📞 تماس با پشتیبانی", callback_data="support")],
+        [InlineKeyboardButton("🛒 مشکلات سفارش", callback_data="faq_تاخیر در ارسال"),
+         InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(track_text, reply_markup=reply_markup)
+
+async def membership_command(update: Update, context: CallbackContext) -> None:
+    """Handler برای دستور /membership"""
+    membership_text = PROMOTIONS['عضویت ویژه']
+    
+    keyboard = [
+        [InlineKeyboardButton("🎉 ثبت نام رایگان", callback_data="register_member"),
+         InlineKeyboardButton("💰 مزایای عضویت", callback_data="benefits")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(membership_text, reply_markup=reply_markup)
+
+async def support_command(update: Update, context: CallbackContext) -> None:
+    """Handler برای دستور /support"""
+    await support_callback(update, context)
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
     """Handler برای پیام‌های متنی"""
@@ -188,7 +288,13 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
             break
     
     if found_answer:
-        await update.message.reply_text(found_answer)
+        # اضافه کردن دکمه‌های مرتبط
+        keyboard = [
+            [InlineKeyboardButton("📞 پشتیبانی", callback_data="support"),
+             InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(found_answer, reply_markup=reply_markup)
     else:
         # اگر سوال تشخیص داده نشد
         not_found_text = """
@@ -198,11 +304,12 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
         """
         
         keyboard = [
-            [InlineKeyboardButton("📦 محصولات", callback_data="cat_products")],
-            [InlineKeyboardButton("🛒 سفارش", callback_data="cat_order")],
-            [InlineKeyboardButton("💳 پرداخت", callback_data="cat_payment")],
-            [InlineKeyboardButton("🚚 ارسال", callback_data="cat_shipping")],
-            [InlineKeyboardButton("📞 تماس با اپراتور", callback_data="support")]
+            [InlineKeyboardButton("📦 محصولات", callback_data="cat_products"),
+             InlineKeyboardButton("🛒 سفارش", callback_data="cat_order")],
+            [InlineKeyboardButton("💳 پرداخت", callback_data="cat_payment"),
+             InlineKeyboardButton("🚚 ارسال", callback_data="cat_shipping")],
+            [InlineKeyboardButton("📞 تماس با اپراتور", callback_data="support"),
+             InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -216,12 +323,13 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
     # دسته‌بندی محصولات
     if query.data == "cat_products":
         keyboard = [
-            [InlineKeyboardButton("📦 موجودی محصول", callback_data="faq_موجودی محصول")],
-            [InlineKeyboardButton("🛡️ گارانتی", callback_data="faq_گارانتی محصولات")],
-            [InlineKeyboardButton("📋 مشخصات محصول", callback_data="faq_مشخصات محصول")],
-            [InlineKeyboardButton("✅ اصالت محصول", callback_data="faq_اصالت محصول")],
+            [InlineKeyboardButton("📦 موجودی محصول", callback_data="faq_موجودی محصول"),
+             InlineKeyboardButton("🛡️ گارانتی", callback_data="faq_گارانتی محصولات")],
+            [InlineKeyboardButton("📋 مشخصات محصول", callback_data="faq_مشخصات محصول"),
+             InlineKeyboardButton("✅ اصالت محصول", callback_data="faq_اصالت محصول")],
             [InlineKeyboardButton("🔧 تست محصول", callback_data="faq_تست محصول")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu"),
+             InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
@@ -232,12 +340,14 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
     # دسته‌بندی سفارش
     elif query.data == "cat_order":
         keyboard = [
-            [InlineKeyboardButton("🛒 ثبت سفارش", callback_data="faq_ثبت سفارش")],
-            [InlineKeyboardButton("✏️ تغییر سفارش", callback_data="faq_تغییر سفارش")],
-            [InlineKeyboardButton("📦 پیگیری سفارش", callback_data="faq_پیگیری سفارش")],
-            [InlineKeyboardButton("🎁 سفارش برای دیگران", callback_data="faq_سفارش برای دیگران")],
-            [InlineKeyboardButton("📞 سفارش تلفنی", callback_data="faq_سفارش تلفنی")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
+            [InlineKeyboardButton("🛒 ثبت سفارش", callback_data="faq_ثبت سفارش"),
+             InlineKeyboardButton("✏️ تغییر سفارش", callback_data="faq_تغییر سفارش")],
+            [InlineKeyboardButton("📦 پیگیری سفارش", callback_data="faq_پیگیری سفارش"),
+             InlineKeyboardButton("⏳ تاخیر در ارسال", callback_data="faq_تاخیر در ارسال")],
+            [InlineKeyboardButton("🎁 سفارش برای دیگران", callback_data="faq_سفارش برای دیگران"),
+             InlineKeyboardButton("📞 سفارش تلفنی", callback_data="faq_سفارش تلفنی")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu"),
+             InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
@@ -248,12 +358,13 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
     # دسته‌بندی پرداخت
     elif query.data == "cat_payment":
         keyboard = [
-            [InlineKeyboardButton("💳 روش پرداخت", callback_data="faq_روش پرداخت")],
-            [InlineKeyboardButton("🔒 امنیت پرداخت", callback_data="faq_امنیت پرداخت")],
-            [InlineKeyboardButton("❌ پرداخت ناموفق", callback_data="faq_پرداخت ناموفق")],
-            [InlineKeyboardButton("📅 پرداخت قسطی", callback_data="faq_پرداخت قسطی")],
+            [InlineKeyboardButton("💳 روش پرداخت", callback_data="faq_روش پرداخت"),
+             InlineKeyboardButton("🔒 امنیت پرداخت", callback_data="faq_امنیت پرداخت")],
+            [InlineKeyboardButton("❌ پرداخت ناموفق", callback_data="faq_پرداخت ناموفق"),
+             InlineKeyboardButton("📅 پرداخت قسطی", callback_data="faq_پرداخت قسطی")],
             [InlineKeyboardButton("🧾 رسید پرداخت", callback_data="faq_رسید پرداخت")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu"),
+             InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
@@ -264,16 +375,32 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
     # دسته‌بندی ارسال
     elif query.data == "cat_shipping":
         keyboard = [
-            [InlineKeyboardButton("⏱️ زمان تحویل", callback_data="faq_زمان تحویل")],
-            [InlineKeyboardButton("💰 هزینه ارسال", callback_data="faq_هزینه ارسال")],
-            [InlineKeyboardButton("🏠 تغییر آدرس", callback_data="faq_تغییر آدرس")],
-            [InlineKeyboardButton("⚡ تحویل فوری", callback_data="faq_تحویل فوری")],
+            [InlineKeyboardButton("⏱️ زمان تحویل", callback_data="faq_زمان تحویل"),
+             InlineKeyboardButton("💰 هزینه ارسال", callback_data="faq_هزینه ارسال")],
+            [InlineKeyboardButton("🏠 تغییر آدرس", callback_data="faq_تغییر آدرس"),
+             InlineKeyboardButton("⚡ تحویل فوری", callback_data="faq_تحویل فوری")],
             [InlineKeyboardButton("🚨 محصول آسیب دیده", callback_data="faq_محصول آسیب دیده")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu"),
+             InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             "🚚 **دسته‌بندی ارسال و تحویل**\n\nلطفا موضوع مورد نظر را انتخاب کنید:",
+            reply_markup=reply_markup
+        )
+    
+    # دسته‌بندی مرجوعی
+    elif query.data == "cat_return":
+        keyboard = [
+            [InlineKeyboardButton("↩️ شرایط مرجوعی", callback_data="faq_شرایط مرجوعی"),
+             InlineKeyboardButton("📋 روش مرجوعی", callback_data="faq_روش مرجوعی")],
+            [InlineKeyboardButton("💸 زمان بازگشت وجه", callback_data="faq_زمان بازگشت وجه")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu"),
+             InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "↩️ **دسته‌بندی مرجوعی و بازگشت کالا**\n\nلطفا موضوع مورد نظر را انتخاب کنید:",
             reply_markup=reply_markup
         )
     
@@ -283,86 +410,234 @@ async def button_handler(update: Update, context: CallbackContext) -> None:
         if category in FAQ_DATABASE:
             answer = FAQ_DATABASE[category]['answer']
             
-            # دکمه بازگشت به دسته مناسب
-            back_button = "main_menu"
-            if "محصول" in category:
-                back_button = "cat_products"
-            elif "سفارش" in category:
-                back_button = "cat_order"
-            elif "پرداخت" in category:
-                back_button = "cat_payment"
-            elif "ارسال" in category or "تحویل" in category:
-                back_button = "cat_shipping"
-            
             keyboard = [
-                [InlineKeyboardButton("🔙 بازگشت", callback_data=back_button)],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data=get_category_back(category)),
+                 InlineKeyboardButton("📞 پشتیبانی", callback_data="support")],
                 [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(answer, reply_markup=reply_markup)
     
-    elif query.data == "support":
-        support_text = """
-        📞 **تماس با پشتیبانی:**
+    # بخش پیشنهادات و تخفیف‌ها
+    elif query.data == "promotions":
+        promo_text = "🎊 **پیشنهادات ویژه و تخفیف‌ها**\n\nلطفا گزینه مورد نظر را انتخاب کنید:"
         
-        **روش‌های ارتباط:**
-        • 👤 آیدی ادمین: @ghbyhbjvhjguboijbot
-        • 📞 شماره تماس: ۰۲۱-۱۲۳۴۵۶۷۸
-        • 📱 واتساپ: ۰۹۱۲۱۲۳۴۵۶۷
-        • 📧 ایمیل: support@store.com
-        
-        **ساعات پاسخگویی:**
-        ⏰ شنبه تا چهارشنبه: ۹ صبح تا ۶ عصر
-        ⏰ پنجشنبه: ۹ صبح تا ۴ عصر
-        
-        لطفا سوال خود را مستقیما برای ادمین ارسال کنید.
-        """
         keyboard = [
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")],
-            [InlineKeyboardButton("❓ سوالات متداول", callback_data="cat_products")]
+            [InlineKeyboardButton("🎉 تخفیف ویژه", callback_data="show_promo"),
+             InlineKeyboardButton("👑 عضویت ویژه", callback_data="membership")],
+            [InlineKeyboardButton("👛 شارژ کیف پول", callback_data="wallet"),
+             InlineKeyboardButton("⭐ نظرسنجی", callback_data="survey")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(support_text, reply_markup=reply_markup)
+        await query.edit_message_text(promo_text, reply_markup=reply_markup)
+    
+    elif query.data == "show_promo":
+        await query.edit_message_text(PROMOTIONS['تخفیف ویژه'], reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="promotions")]
+        ]))
+    
+    elif query.data == "membership":
+        await query.edit_message_text(PROMOTIONS['عضویت ویژه'], reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎉 ثبت نام", callback_data="register_member")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="promotions")]
+        ]))
+    
+    elif query.data == "wallet":
+        await query.edit_message_text(PROMOTIONS['شارژ کیف پول'], reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 شارژ کن", callback_data="charge_wallet")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="promotions")]
+        ]))
+    
+    elif query.data in ["register_member", "charge_wallet"]:
+        await query.edit_message_text(
+            "✅ برای تکمیل فرآیند، لطفا با پشتیبانی تماس بگیرید:\n\n📞 021-12345678\n👤 @ghbyhbjvhjguboijbot",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📞 تماس", callback_data="support")],
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+            ])
+        )
+    
+    elif query.data == "survey":
+        await query.edit_message_text(
+            "⭐ **نظرسنجی رضایت از خدمات**\n\nلطفا میزان رضایت خود را انتخاب کنید:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("😊 عالی", callback_data="survey_excellent"),
+                 InlineKeyboardButton("🙂 خوب", callback_data="survey_good")],
+                [InlineKeyboardButton("😐 متوسط", callback_data="survey_avg"),
+                 InlineKeyboardButton("☹️ ضعیف", callback_data="survey_poor")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
+            ])
+        )
+    
+    elif query.data.startswith("survey_"):
+        rating = query.data[7:]
+        ratings = {
+            'excellent': 'عالی 😊',
+            'good': 'خوب 🙂', 
+            'avg': 'متوسط 😐',
+            'poor': 'ضعیف ☹️'
+        }
+        
+        await query.edit_message_text(
+            f"✅ **با تشکر از شما!**\n\nامتیاز شما: {ratings[rating]}\n\nنظر شما با موفقیت ثبت شد. برای بهبود خدمات از پیشنهادات شما استفاده خواهیم کرد.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu"),
+                 InlineKeyboardButton("📞 پیشنهاد جدید", callback_data="support")]
+            ])
+        )
+    
+    elif query.data == "notifications":
+        await query.edit_message_text(
+            "🔔 **سرویس اطلاع‌رسانی**\n\nبرای دریافت اطلاعیه‌های زیر عضو شوید:\n• 📦 وضعیت سفارش\n• 🎉 تخفیف‌های ویژه\n• 🔔 محصولات جدید\n• ⚡ اطلاع‌رسانی فوری",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ فعال کردن", callback_data="enable_notifications")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]
+            ])
+        )
+    
+    elif query.data == "enable_notifications":
+        await query.edit_message_text(
+            "✅ **سرویس اطلاع‌رسانی فعال شد!**\n\nاز این پس از آخرین اخبار و تخفیف‌ها مطلع خواهید شد.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+            ])
+        )
+    
+    elif query.data == "support":
+        await support_callback(query, context)
     
     elif query.data == "info":
-        info_text = """
-        🏪 **اطلاعات فروشگاه:**
-        
-        **📌 آدرس:**
-        🏢 تهران، خیابان ولیعصر، پلاک ۱۰۰۰
-        
-        **📞 تماس:**
-        📱 فروشگاه: ۰۲۱-۱۲۳۴۵۶۷۸
-        📞 پشتیبانی: ۰۲۱-۱۲۳۴۵۶۷۹
-        
-        **🕒 ساعات کاری:**
-        ⏰ شنبه تا چهارشنبه: ۸ صبح تا ۱۰ شب
-        ⏰ پنجشنبه: ۸ صبح تا ۸ شب
-        ⏰ جمعه: ۱۰ صبح تا ۶ شب
-        
-        **🌐 وبسایت:** www.mystore.com
-        """
-        keyboard = [
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")],
-            [InlineKeyboardButton("📞 پشتیبانی", callback_data="support")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(info_text, reply_markup=reply_markup)
+        await info_callback(query, context)
     
     elif query.data == "main_menu":
-        keyboard = [
-            [InlineKeyboardButton("📦 محصولات", callback_data="cat_products"), 
-             InlineKeyboardButton("🛒 سفارش", callback_data="cat_order")],
-            [InlineKeyboardButton("💳 پرداخت", callback_data="cat_payment"), 
-             InlineKeyboardButton("🚚 ارسال", callback_data="cat_shipping")],
-            [InlineKeyboardButton("📞 تماس با پشتیبانی", callback_data="support"),
-             InlineKeyboardButton("🏠 اطلاعات فروشگاه", callback_data="info")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            "🏠 **منوی اصلی**\n\nلطفا دسته مورد نظر را انتخاب کنید:",
-            reply_markup=reply_markup
-        )
+        await start_callback(query, context)
+
+async def support_callback(update, context):
+    """تابع مشترک برای پشتیبانی"""
+    support_text = """
+    📞 **تماس با پشتیبانی:**
+    
+    **روش‌های ارتباط:**
+    • 👤 آیدی ادمین: @ghbyhbjvhjguboijbot
+    • 📞 شماره تماس: ۰۲۱-۱۲۳۴۵۶۷۸
+    • 📱 واتساپ: ۰۹۱۲۱۲۳۴۵۶۷
+    • 📧 ایمیل: support@store.com
+    
+    **ساعات پاسخگویی:**
+    ⏰ شنبه تا چهارشنبه: ۹ صبح تا ۶ عصر
+    ⏰ پنجشنبه: ۹ صبح تا ۴ عصر
+    
+    **خدمات پشتیبانی:**
+    • 🛒 پیگیری سفارش
+    • 💳 مشکلات پرداخت
+    • ↩️ درخواست مرجوعی
+    • 🔧 مشکلات فنی
+    • 💬 مشاوره خرید
+    
+    لطفا سوال خود را مستقیما برای ادمین ارسال کنید.
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🛒 مشکلات سفارش", callback_data="faq_تاخیر در ارسال"),
+         InlineKeyboardButton("💳 مشکلات پرداخت", callback_data="faq_پرداخت ناموفق")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu"),
+         InlineKeyboardButton("↩️ درخواست مرجوعی", callback_data="cat_return")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if hasattr(update, 'message'):
+        await update.message.reply_text(support_text, reply_markup=reply_markup)
+    else:
+        await update.edit_message_text(support_text, reply_markup=reply_markup)
+
+async def info_callback(update, context):
+    """تابع مشترک برای اطلاعات فروشگاه"""
+    info_text = """
+    🏪 **اطلاعات کامل فروشگاه:**
+    
+    **📌 آدرس فروشگاه:**
+    🏢 تهران، خیابان ولیعصر، پلاک ۱۰۰۰
+    🗺️ [مسیریابی از گوگل مپ](https://maps.google.com)
+    
+    **📞 راه‌های تماس:**
+    📱 فروشگاه: ۰۲۱-۱۲۳۴۵۶۷۸
+    📞 پشتیبانی: ۰۲۱-۱۲۳۴۵۶۷۹
+    📠 فکس: ۰۲۱-۱۲۳۴۵۶۷۰
+    📧 ایمیل: info@store.com
+    
+    **🕒 ساعات کاری:**
+    ⏰ شنبه تا چهارشنبه: ۸ صبح تا ۱۰ شب
+    ⏰ پنجشنبه: ۸ صبح تا ۸ شب
+    ⏰ جمعه: ۱۰ صبح تا ۶ شب
+    
+    **🌐 ارتباطات:**
+    • وبسایت: www.mystore.com
+    • اینستاگرام: @mystore
+    • تلگرام: @mystore_channel
+    
+    **🚗 دسترسی:**
+    • 🅿️ پارکینگ رایگان
+    • ♿ مناسب معلولین
+    • 🚇 نزدیک ایستگاه مترو
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("📞 تماس سریع", callback_data="support"),
+         InlineKeyboardButton("🗺️ مسیریابی", url="https://maps.google.com")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if hasattr(update, 'message'):
+        await update.message.reply_text(info_text, reply_markup=reply_markup, disable_web_page_preview=True)
+    else:
+        await update.edit_message_text(info_text, reply_markup=reply_markup, disable_web_page_preview=True)
+
+async def start_callback(update, context):
+    """تابع مشترک برای منوی اصلی"""
+    user = update.effective_user if hasattr(update, 'effective_user') else update.from_user
+    
+    keyboard = [
+        [InlineKeyboardButton("📦 محصولات", callback_data="cat_products"), 
+         InlineKeyboardButton("🛒 سفارش", callback_data="cat_order")],
+        [InlineKeyboardButton("💳 پرداخت", callback_data="cat_payment"), 
+         InlineKeyboardButton("🚚 ارسال", callback_data="cat_shipping")],
+        [InlineKeyboardButton("↩️ مرجوعی", callback_data="cat_return"),
+         InlineKeyboardButton("🎉 تخفیف‌ها", callback_data="promotions")],
+        [InlineKeyboardButton("📞 پشتیبانی", callback_data="support"),
+         InlineKeyboardButton("🏠 اطلاعات فروشگاه", callback_data="info")],
+        [InlineKeyboardButton("⭐ نظرسنجی", callback_data="survey"),
+         InlineKeyboardButton("🔔 اطلاع‌رسانی", callback_data="notifications")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    welcome_text = f"""
+    🏠 **منوی اصلی**
+    
+    سلام {user.first_name} عزیز! 
+    لطفا گزینه مورد نظر را انتخاب کنید:
+    """
+    
+    if hasattr(update, 'message'):
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    else:
+        await update.edit_message_text(welcome_text, reply_markup=reply_markup)
+
+def get_category_back(category):
+    """تعیین دسته بازگشت بر اساس موضوع"""
+    if "محصول" in category:
+        return "cat_products"
+    elif "سفارش" in category or "تاخیر" in category:
+        return "cat_order"
+    elif "پرداخت" in category:
+        return "cat_payment"
+    elif "ارسال" in category or "تحویل" in category:
+        return "cat_shipping"
+    elif "مرجوع" in category or "بازگشت" in category:
+        return "cat_return"
+    else:
+        return "main_menu"
 
 async def admin_stats(update: Update, context: CallbackContext) -> None:
     """دستور برای مشاهده آمار توسط ادمین"""
@@ -371,13 +646,21 @@ async def admin_stats(update: Update, context: CallbackContext) -> None:
         return
     
     stats_text = f"""
-    📊 **آمار ربات:**
+    📊 **آمار کامل ربات:**
     
-    • ✅ وضعیت: فعال
+    • ✅ وضعیت: فعال و آنلاین
     • 🕒 آخرین فعالیت: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     • 🚀 میزبان: Railway
     • 📝 تعداد سوالات: {len(FAQ_DATABASE)} موضوع
+    • 🎉 تعداد پیشنهادات: {len(PROMOTIONS)} مورد
     • 🏪 محیط: Production
+    
+    **📈 امکانات ربات:**
+    • دسته‌بندی‌های کامل
+    • سیستم نظرسنجی
+    • پیشنهادات ویژه
+    • پشتیبانی 24/7
+    • اطلاع‌رسانی هوشمند
     
     🤖 ربات در حال اجراست و آماده پاسخگویی!
     """
@@ -396,7 +679,12 @@ def main() -> None:
     # اضافه کردن handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("promo", promo_command))
+    application.add_handler(CommandHandler("track", track_command))
+    application.add_handler(CommandHandler("membership", membership_command))
+    application.add_handler(CommandHandler("support", support_command))
     application.add_handler(CommandHandler("stats", admin_stats))
+    
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
@@ -408,7 +696,9 @@ def main() -> None:
     print(f"✅ توکن: {BOT_TOKEN[:10]}...")
     print(f"✅ آیدی ادمین: {ADMIN_ID}")
     print(f"✅ تعداد سوالات: {len(FAQ_DATABASE)}")
+    print(f"✅ تعداد پیشنهادات: {len(PROMOTIONS)}")
     print("📍 میزبان: Railway")
+    print("🚀 ربات آماده ارائه خدمات!")
     
     # اجرای ربات
     application.run_polling()
